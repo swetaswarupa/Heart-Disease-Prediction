@@ -1,0 +1,351 @@
+---
+title: "Heart Disease Prediction"
+author: "Sweta Swarupa"
+date: "`r format(Sys.time(), '%d/%m/%y')`"
+output:
+  pdf_document:
+    toc: yes
+    toc_depth: 3
+    number_sections: yes
+  html_document:
+    toc: yes
+    toc_depth: '3'
+    df_print: paged
+geometry: left=2cm,right=2cm,top=2cm,bottom=2cm
+---
+
+```{css, include=FALSE, echo = FALSE}
+.remark-slide-content {
+  font-size: 24px;
+  padding: 20px 60px 20px 60px;
+}
+.remark-code, .remark-inline-code {
+  background: #f0f0f0;
+}
+.remark-code {
+  font-size: 20px;
+}
+.huge .remark-code {
+  font-size: 100% !important;
+}
+.tiny .remark-code {
+  font-size: 50% !important;
+}
+```
+
+```{r loading_libraries, inlcude=FALSE, echo=FALSE, message=FALSE, warning=FALSE}
+library(tidyverse)
+library(caret)
+library(data.table)
+library(randomForest)
+library(ggplot2)
+library(corrplot)
+library(dplyr)
+library(GGally)
+library(e1071)
+```
+# Introduction
+
+Cardiovascular diseases (CVDs) are the number 1 cause of death globally, taking an estimated 17.9 million lives each year, which accounts for 31% of all deaths worldwide. Four out of 5CVD deaths are due to heart attacks and strokes, and one-third of these deaths occur prematurely in people under 70 years of age. Heart failure is a common event caused by CVDs and this dataset contains 11 features that can be used to predict a possible heart disease.
+
+People with cardiovascular disease or who are at high cardiovascular risk (due to the presence of one or more risk factors such as hypertension, diabetes, hyperlipidaemia or already established disease) need early detection and management wherein a machine learning model can be of great help.
+
+## Source:
+
+The dataset is taken from Kaggle. https://www.kaggle.com/fedesoriano/heart-failure-prediction
+
+This dataset was created by combining different datasets already available independently but not combined before. In this dataset, 5 heart datasets are combined over 11 common features which makes it the largest heart disease dataset available so far for research purposes. The five datasets used for its curation are:
+
+•	Cleveland: 303 observations
+
+•	Hungarian: 294 observations
+
+•	Switzerland: 123 observations
+
+•	Long Beach VA: 200 observations
+
+•	Stalog (Heart) Data Set: 270 observations
+
+Total: 1190 observations,
+Duplicated: 272 observations,
+Final dataset: 918 observations
+
+
+## Attribute Information: 
+
+1.	Age: age of the patient [years]
+
+2.	Sex: sex of the patient [M: Male, F: Female]
+
+3.	ChestPainType: chest pain type [TA: Typical Angina, ATA: Atypical Angina, NAP: Non-Anginal Pain, ASY: Asymptomatic]
+
+4.	RestingBP: resting blood pressure [mm Hg]
+
+5.	Cholesterol: serum cholesterol [mm/dl]
+
+6.	FastingBS: fasting blood sugar [1: if FastingBS > 120 mg/dl, 0: otherwise]
+
+7.	RestingECG: resting electrocardiogram results [Normal: Normal, ST: having ST-T wave abnormality (T wave inversions and/or ST elevation or depression of > 0.05 mV), LVH: showing probable or definite left ventricular hypertrophy by Estes' criteria]
+
+8.	MaxHR: maximum heart rate achieved [Numeric value between 60 and 202]
+
+9.	ExerciseAngina: exercise-induced angina [Y: Yes, N: No]
+
+10.	Oldpeak: oldpeak = ST [Numeric value measured in depression]
+
+11.	ST_Slope: the slope of the peak exercise ST segment [Up: upsloping, Flat: flat, Down: downsloping]
+
+12.	HeartDisease: output class [1: heart disease, 0: Normal]
+
+## Reading the data
+```{r, collapse = TRUE}
+heart <- read.csv('C:/Heart Failure Prediction/heart.csv', header = TRUE)
+str(heart)
+```
+
+There are 918 observations and 12 variables. There are 5 character variables, 6 integer variables and 1 numeric variable.
+
+## Checking the number of unique values for each variable.
+```{r, collapse = TRUE}
+sapply(heart, n_distinct)
+```
+
+\pagebreak
+
+**A portion of the heart data set is shown below:**
+
+```{r, inlcude=FALSE, echo=FALSE}
+library(knitr)
+kable(heart[1:5,1:9], caption = "Heart Data")
+```
+
+## Checking for any Missing Values.
+```{r, collapse = TRUE}
+sapply(heart, function(x) sum(is.na(x)))
+```
+
+There are no missing values.
+
+## Checking for Target Imbalance
+```{r, collapse = TRUE}
+heart$HeartDisease <- as.character(heart$HeartDisease)
+ggplot(data = heart, aes(x=HeartDisease, fill = HeartDisease)) +
+  geom_bar() + labs(x='Heart Disease') + labs(title = "Bar Graph of Heart Disease")
+  
+table(heart$HeartDisease)
+prop.table(table(heart$HeartDisease))
+```
+
+The target looks balanced. 44.6% of the observations do not have heart diseases whereas 55.3% of the observations have the heart disease.
+
+# Data Analysis
+
+## Plotting Sex Variable
+```{r, collapse = TRUE}
+ggplot(data = heart, aes(x=Sex, fill = HeartDisease, position = 'dodge')) +
+  geom_bar() + labs(x='Sex') + labs(title = "Bar Graph of Heart Disease by Sex")
+```
+
+Looks like males are affected more by heart disease than females.
+
+## Plotting Age Variable
+```{r, collapse = TRUE}
+ggplot(data = heart, aes(x=Age, fill = HeartDisease, position = 'dodge')) +
+  geom_bar() + labs(x='Age') + labs(title = "Bar Graph of Heart Disease by Age")
+```
+
+## Plotting ChestPainType Variable
+```{r, collapse = TRUE}
+ggplot(data = heart, aes(x=reorder(ChestPainType, ChestPainType, function(x)-length(x)), fill = HeartDisease, position = 'dodge')) +
+  geom_bar() + labs(x='Chest Pain Type') + labs(title = "Bar Graph of Heart Disease by Chest Pain Type")
+```
+
+Proportion of heart patients is higher when the chest pain type is ASY.
+
+## Plotting RestingECG Variable
+```{r, collapse = TRUE}
+ggplot(data = heart, aes(x=reorder(RestingECG, RestingECG, function(x)-length(x)), fill = HeartDisease, position = 'dodge')) +
+  geom_bar() + labs(x='Resting ECG') + labs(title = "Bar Graph of Heart Disease by Resting ECG")
+```
+
+Proportion of heart patients is higher when the Resting ECG type is LVH and ST.
+
+## Plotting ExerciseAngina Variable
+```{r, collapse = TRUE}
+ggplot(data = heart, aes(x=ExerciseAngina, fill = HeartDisease, position = 'dodge')) +
+  geom_bar() + labs(x='Exercise Angina') + labs(title = "Bar Graph of Heart Disease by Exercise Angina")
+```
+
+Proportion of heart patients is significantly higher when the ExerciseAngina is Y.
+
+## Plotting ST_Slope Variable
+```{r, collapse = TRUE}
+ggplot(data = heart, aes(x=reorder(ST_Slope, ST_Slope, function(x)-length(x)), fill = HeartDisease, position = 'dodge')) +
+  geom_bar() + labs(x='ST Slope') + labs(title = "Bar Graph of Heart Disease by ST Slope")
+```
+
+Proportion of heart patients is significantly higher when the ST_Slope is Flat and Down.
+
+## Pair Plot
+```{r, collapse = TRUE, warning = FALSE}
+heart1 <- heart %>% select(-c(Sex,ChestPainType,RestingECG,ExerciseAngina,ST_Slope))
+heart1$HeartDisease <- as.character(heart1$HeartDisease) 
+ggpairs(heart1, ggplot2::aes(colour=HeartDisease)) 
+```
+
+The above graph shows the distribution of observations with heart disease and without heart disease. 
+
+# Checking Correlation between Variables
+```{r, collapse = TRUE}
+library(corrplot)
+#Converting Categorical Variables into Numerical Variable
+heart2 <- heart %>% mutate_if(is.character, as.factor)
+heart2 <- heart2 %>%  mutate_if(is.factor, as.numeric)
+
+corrplot(cor(heart2), type="full", 
+         method ="color", title = "Correlation plot", 
+         mar=c(0,0,1,0), tl.cex= 0.8, outline= T, tl.col="indianred4")
+round(cor(heart2),2)
+```
+
+Heart Disease has high negative correlation with ST_Slope followed by MaxHR and high positive correlation with ExerciseAngina followed by Oldpeak.
+
+# Splitting the Data into Training and Test datasets
+```{r, collapse = TRUE}
+library(caret)
+heart <- heart %>% mutate_if(is.character, as.factor)
+heart$HeartDisease <- as.factor(heart$HeartDisease)
+
+set.seed(5)
+trainIndex <- createDataPartition(heart$HeartDisease, p = .7,
+                                  list = FALSE,
+                                  times = 1)
+Train <- heart[ trainIndex,]
+Test <- heart[-trainIndex,]
+
+prop.table(table(Train$HeartDisease))
+prop.table(table(Test$HeartDisease))
+```
+
+Splitting data into 70% Training and 30% Test. We can see the proportion of heart patients and normal in both training and test dataset is similar to heart dataset. 
+
+# Model 1 Logistic Regression Model
+
+## Building Model
+```{r, collapse = TRUE}
+lm <- glm(HeartDisease ~.,family=binomial(link='logit'),data=Train)
+anova(lm, test="Chisq")
+```
+
+
+## Using McFadden R2 index to assess the model fit
+```{r, collapse = TRUE}
+library(pscl)
+pR2(lm)
+```
+
+## Using the model to predict heart disease in the test dataset
+```{r, collapse = TRUE}
+pred_lm <- predict(lm, newdata = Test, type = 'response')
+```
+
+## Checking accuracy of the model on the test dataset
+```{r, collapse = TRUE}
+pred_lm <- ifelse(pred_lm > 0.5,1,0)
+misClasificError <- mean(pred_lm != Test$HeartDisease)
+print(paste('Accuracy',1-misClasificError))
+```
+
+## ROC Plot
+```{r, collapse = TRUE}
+library(ROCR)
+p <- predict(lm, newdata=Test, type="response")
+pr <- prediction(p, Test$HeartDisease)
+prf <- performance(pr, measure = "tpr", x.measure = "fpr")
+plot(prf)
+```
+
+## AUC
+```{r, collapse = TRUE}
+auc <- performance(pr, measure = "auc")
+auc <- auc@y.values[[1]]
+auc
+```
+
+The accuracy of the model is 86.9%
+
+# Model 2 Random Forest Model
+
+## Building Model
+```{r, collapse = TRUE}
+library(randomForest)
+set.seed(5)
+rf <- randomForest(HeartDisease~.,data = Train, type = "class", importance=TRUE, ntree= 500, mtry = 3)
+print(rf)
+plot(rf)
+```
+
+## Feature Importance Plot
+```{r, collapse = TRUE}
+varImpPlot(rf, main ='Feature Importance')
+```
+
+## Using the model to predict heart diseases in the test dataset
+```{r, collapse = TRUE}
+pred_rf <- predict(rf, Test, type = "class")
+```
+
+## Confusion Matrix
+```{r, collapse = TRUE}
+confusionMatrix(as.factor(pred_rf),as.factor(Test$HeartDisease))
+```
+
+The accuracy of the model is 88%.
+
+# Model 3 Naive Bayes Model
+
+## Set up 10-fold cross validation procedure
+```{r, collapse = TRUE}
+library(caret)
+train_control <- trainControl(
+  method = "cv", 
+  number = 10
+)
+```
+
+## Building Model
+```{r, collapse = TRUE, warning=FALSE}
+set.seed(123)
+nb <- train(
+  x = Train,
+  y = Train$HeartDisease,
+  method = "nb",
+  trControl = train_control
+)
+nb
+```
+
+## Using the model to predict heart diseases in the test dataset
+```{r, collapse = TRUE, warning=FALSE}
+pred_nb <- predict(nb, newdata = Test)
+```
+
+## Confusion Matrix
+```{r, collapse = TRUE}
+confusionMatrix(pred_nb, Test$HeartDisease)
+```
+
+The accuracy of the model is 98.1%. The accuracy of this model could be high due to overfitting.
+
+\pagebreak
+
+# Conclusion and Model Comparison
+
+We used logistic regression, random forest and naive bayes models to predict heart disease and we see that naive bayes gives us a better accuracy among the three models. The accuracy comparison for three different models is shown below.
+
+```{r, echo=FALSE, message=FALSE, warning=FALSE}
+Model <- c("Logistic Regression", "Random Forest", "Naive Bayes")
+Accuracy <- c(.869, .880,  .981)
+Model_Comparision <- data.frame(Model, Accuracy)
+knitr::kable(Model_Comparision, "pipe")
+```
